@@ -1,7 +1,7 @@
 {
-  "name": "field-starter",
+  "name": "fbif-integration-tool",
   "version": "1.0.0",
-  "description": "",
+  "description": "【FBIF】集成平台传输工具 - 飞书多维表格字段捷径",
   "main": "index.js",
   "scripts": {
     "start": "block-basekit-cli start:field",

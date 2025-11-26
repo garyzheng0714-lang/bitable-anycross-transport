@@ -1,87 +1,78 @@
-import { basekit, FieldType, field, FieldComponent, FieldCode, NumberFormatter, AuthorizationType } from '@lark-opdev/block-basekit-server-api';
+import { basekit, FieldType, field, FieldComponent, FieldCode } from '@lark-opdev/block-basekit-server-api';
 const { t } = field;
 
-const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com'];
-// 通过addDomainList添加请求接口的域名，不可写多个addDomainList，否则会被覆盖
-basekit.addDomainList([...feishuDm, 'api.exchangerate-api.com',]);
+// Add the domain for the request
+// 注意：如果你需要访问其他域名的接口，必须在此处添加域名白名单
+// Note: If you need to access APIs from other domains, you must add them to this whitelist
+basekit.addDomainList(['open.feishu.cn']);
 
 basekit.addField({
-  // 定义捷径的i18n语言资源
+  // Define i18n resources
   i18n: {
     messages: {
       'zh-CN': {
-        'rmb': '人民币金额',
-        'usd': '美元金额',
-        'rate': '汇率',
+        'url': '请求地址',
+        'url_placeholder': '请输入请求地址',
+        'payload': '请求参数',
+        'payload_placeholder': '支持 JSON 或 key=value 格式',
+        'status': '状态码',
+        'response': '响应结果',
+        'timestamp': '请求时间',
       },
       'en-US': {
-        'rmb': 'RMB Amount',
-        'usd': 'Dollar amount',
-        'rate': 'Exchange Rate',
+        'url': 'Request URL',
+        'url_placeholder': 'Please enter request URL',
+        'payload': 'Payload',
+        'payload_placeholder': 'JSON or key=value format',
+        'status': 'Status Code',
+        'response': 'Response Body',
+        'timestamp': 'Timestamp',
       },
       'ja-JP': {
-        'rmb': '人民元の金額',
-        'usd': 'ドル金額',
-        'rate': '為替レート',
+        'url': 'リクエストURL',
+        'url_placeholder': 'リクエストURLを入力してください',
+        'payload': 'リクエスト内容',
+        'payload_placeholder': 'JSON または key=value 形式',
+        'status': 'ステータスコード',
+        'response': 'レスポンス結果',
+        'timestamp': 'タイムスタンプ',
       },
     }
   },
-  // 定义捷径的入参
+  // Define input parameters
   formItems: [
     {
-      key: 'account',
-      label: t('rmb'),
-      component: FieldComponent.FieldSelect,
+      key: 'url',
+      label: t('url'),
+      component: FieldComponent.Input,
       props: {
-        supportType: [FieldType.Number],
+        placeholder: t('url_placeholder'),
+      },
+      validator: {
+        required: true,
+      }
+    },
+    {
+      key: 'payload',
+      label: t('payload'),
+      component: FieldComponent.Input,
+      props: {
+        placeholder: t('payload_placeholder'),
       },
       validator: {
         required: true,
       }
     },
   ],
-  // 定义捷径的返回结果类型
+  // Define return result type
   resultType: {
-    type: FieldType.Object,
-    extra: {
-      icon: {
-        light: 'https://lf3-static.bytednsdoc.com/obj/eden-cn/eqgeh7upeubqnulog/chatbot.svg',
-      },
-      properties: [
-        {
-          key: 'id',
-          isGroupByKey: true,
-          type: FieldType.Text,
-          label: 'id',
-          hidden: true,
-        },
-        {
-          key: 'usd',
-          type: FieldType.Number,
-          label: t('usd'),
-          primary: true,
-          extra: {
-            formatter: NumberFormatter.DIGITAL_ROUNDED_2,
-          }
-        },
-        {
-          key: 'rate',
-          type: FieldType.Number,
-          label: t('rate'),
-          extra: {
-            formatter: NumberFormatter.DIGITAL_ROUNDED_4,
-          }
-        },
-      ],
-    },
+    type: FieldType.Text,
   },
-  // formItemParams 为运行时传入的字段参数，对应字段配置里的 formItems （如引用的依赖字段）
-  execute: async (formItemParams: { account: number }, context) => {
-    const { account = 0 } = formItemParams;
-    /** 
-         * 为方便查看日志，使用此方法替代console.log
-         * 开发者可以直接使用这个工具函数进行日志记录
-         */
+  // Execute function
+  execute: async (formItemParams: { url: any, payload: any }, context) => {
+    const { url, payload } = formItemParams;
+
+    // Debug logging helper
     function debugLog(arg: any, showContext = false) {
       // @ts-ignore
       if (!showContext) {
@@ -95,93 +86,169 @@ basekit.addField({
       }), '\n');
     }
 
-    // 入口第一行日志，展示formItemParams和context，方便调试
-    // 每次修改版本时，都需要修改日志版本号，方便定位问题
-    debugLog('=====start=====v1', true);
+    // Helper to extract text from field value
+    function getTextFieldValue(fieldValue: any): string {
+        if (fieldValue === null || fieldValue === undefined) return '';
+        if (typeof fieldValue === 'string') return fieldValue;
+        if (typeof fieldValue === 'number') return String(fieldValue);
+        
+        // Handle array (e.g., from FieldSelect referencing a text/url field)
+        if (Array.isArray(fieldValue)) {
+            return fieldValue.map(item => {
+                if (typeof item === 'object') {
+                    // Prioritize 'link' for URL fields, then 'text', then fallback to empty string
+                    return item.link || item.text || '';
+                }
+                return String(item);
+            }).join('');
+        }
+        
+        // Handle object (e.g., single object field value)
+        if (typeof fieldValue === 'object') {
+             return fieldValue.link || fieldValue.text || JSON.stringify(fieldValue);
+        }
+        
+        return String(fieldValue);
+    }
 
-    /** 
-     * 封装好的fetch函数 - 开发者请尽量使用这个封装，而不是直接调用context.fetch
-     * 这个封装会自动处理日志记录和错误捕获，简化开发工作
-     */
+    // Helper to parse payload string (JSON or Key-Value)
+    function parsePayload(input: string): any {
+        if (!input || !input.trim()) return {};
+
+        // 1. Try JSON parsing first
+        try {
+            return JSON.parse(input);
+        } catch (e) {
+            // 2. Fallback to Key-Value parsing
+            // Split by newline or semicolon
+            const lines = input.split(/[\n;]/);
+            const result: Record<string, any> = {};
+            let hasKV = false;
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) continue;
+
+                // Find first '=' to split key and value
+                const equalIndex = trimmedLine.indexOf('=');
+                if (equalIndex === -1) continue;
+
+                const key = trimmedLine.substring(0, equalIndex).trim();
+                const valueStr = trimmedLine.substring(equalIndex + 1).trim();
+                
+                if (!key) continue;
+
+                hasKV = true;
+                
+                // Type inference
+                let value: any = valueStr;
+                if (valueStr === 'true') value = true;
+                else if (valueStr === 'false') value = false;
+                else if (valueStr === 'null') value = null;
+                else if (!isNaN(Number(valueStr)) && valueStr !== '') {
+                     value = Number(valueStr);
+                }
+
+                result[key] = value;
+            }
+
+            // If no valid KV found, but input wasn't empty, it might be malformed JSON or invalid format.
+            // But we return the result anyway (might be empty object).
+            // We can optionally log a warning if needed, but for now we just return what we parsed.
+            if (!hasKV && input.trim()) {
+                console.warn('Payload parsing: Invalid JSON and no valid Key-Value pairs found.');
+            }
+
+            return result;
+        }
+    }
+
+    debugLog('=====start HTTP Request=====', true);
+
+    // Fetch wrapper
     const fetch: <T = Object>(...arg: Parameters<typeof context.fetch>) => Promise<T | { code: number, error: any, [p: string]: any }> = async (url, init, authId) => {
       try {
         const res = await context.fetch(url, init, authId);
-        // 不要直接.json()，因为接口返回的可能不是json格式，会导致解析错误
         const resText = await res.text();
 
-        // 自动记录请求结果日志
         debugLog({
-          [`===fetch res： ${url} 接口返回结果`]: {
-            url,
-            init,
-            authId,
-            resText: resText.slice(0, 4000), // 截取部分日志避免日志量过大
+          [`===fetch res： ${url}`]: {
+            status: res.status,
+            resText: resText.slice(0, 4000),
           }
         });
 
-        return JSON.parse(resText);
+        // Try to parse JSON, if fails return text
+        try {
+            return {
+                status: res.status,
+                data: JSON.parse(resText),
+                raw: resText
+            } as any;
+        } catch {
+            return {
+                status: res.status,
+                data: resText,
+                raw: resText
+            } as any;
+        }
       } catch (e) {
-        // 自动记录错误日志
         debugLog({
-          [`===fetch error： ${url} 接口返回错误`]: {
-            url,
-            init,
-            authId,
+          [`===fetch error： ${url}`]: {
             error: e
           }
         });
-        return {
-          code: -1,
-          error: e
-        };
+        throw e;
       }
     };
 
     try {
-
-      interface ExchangeRateResponse {
-        rates: {
-          [currency: string]: number
-        }
+      // URL is from Input component, should be string, but use helper for safety
+      const targetUrl = getTextFieldValue(url).trim();
+      
+      // Payload is from Input component, needs parsing
+      const payloadStr = getTextFieldValue(payload);
+      
+      let payloadData: any;
+      try {
+          payloadData = parsePayload(payloadStr);
+      } catch (e) {
+          // Log parsing error specifically
+          console.error('Payload parsing error:', e);
+          debugLog({
+            '===JSON Parsing Error': String(e),
+            'rawPayload': payloadStr
+          });
+          // We could return a specific error code, but FieldCode.Error is standard
+          return {
+              code: FieldCode.Error
+          };
+      }
+      
+      if (!targetUrl) {
+          throw new Error('Invalid URL');
       }
 
-      const res = await fetch<ExchangeRateResponse>('https://api.exchangerate-api.com/v4/latest/CNY2', { // 已经在addDomainList中添加为白名单的请求
-        method: 'GET',
+      debugLog({ targetUrl, payloadData });
+
+      const res: any = await fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payloadData)
       });
 
-      const usdRate = res?.rates?.['USD'];
-
-
       return {
         code: FieldCode.Success,
-        data: {
-          id: `${Math.random()}`,
-          usd: parseFloat((account * usdRate).toFixed(4)),
-          rate: usdRate,
-        }
+        data: typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
       }
 
-      /*
-        如果错误原因明确，想要向使用者传递信息，要避免直接报错，可将错误信息当作成功结果返回：
-
-      return {
-        code: FieldCode.Success,
-        data: {
-          id: `具体错误原因`,
-          usd: 0,
-          rate: 0,
-        }
-      }
-
-      */
     } catch (e) {
       console.log('====error', String(e));
       debugLog({
-        '===999 异常错误': String(e)
+        '===999 Exception': String(e)
       });
-      /** 返回非 Success 的错误码，将会在单元格上显示报错，请勿返回msg、message之类的字段，它们并不会起作用。
-       * 对于未知错误，请直接返回 FieldCode.Error，然后通过查日志来排查错误原因。
-       */
       return {
         code: FieldCode.Error,
       }
