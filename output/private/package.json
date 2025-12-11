@@ -1,0 +1,20 @@
+{
+  "name": "fbif-integration-tool",
+  "version": "1.0.0",
+  "description": "【FBIF】集成平台传输工具 - 飞书多维表格字段捷径",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ./node_modules/@lark-opdev/block-basekit-cli/dist/index.js start:field",
+    "build": "node ./node_modules/@lark-opdev/block-basekit-cli/dist/index.js build:field",
+    "pack": "node ./node_modules/@lark-opdev/block-basekit-cli/dist/index.js pack:field",
+    "dev": "node ./node_modules/@lark-opdev/block-basekit-cli/dist/index.js dev:field"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@lark-opdev/block-basekit-cli": "1.0.5"
+  },
+  "dependencies": {
+    "@lark-opdev/block-basekit-server-api": "1.0.6"
+  }
+}
